@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event QR Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyCRBIafHOkEkaggvjxwYI5TRTOZX6j8kOY",
+            authDomain: "team-enthiran-event-login.firebaseapp.com",
+            projectId: "team-enthiran-event-login",
+            storageBucket: "team-enthiran-event-login.firebasestorage.app",
+            messagingSenderId: "548157754417",
+            appId: "1:548157754417:web:2848554ddd919b47671910"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        window.scanQRCode = function() {
+            const scanner = new Html5Qrcode("scanner");
+            scanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: 250 },
+                async (decodedText) => {
+                    scanner.stop();
+                    await processScannedData(decodedText);
+                },
+                (error) => {});
+        }
+        
+        async function processScannedData(qrData) {
+            const [teamId, teamName] = qrData.split("|");
+            const teamRef = doc(db, "teams", teamId);
+            const teamSnap = await getDoc(teamRef);
+            
+            if (!teamSnap.exists()) {
+                showPopup("Error", "Team not found!", "Try Again");
+                return;
+            }
+            
+            const teamData = teamSnap.data();
+            if (teamData.checkedIn) {
+                showPopup("Warning", "This team has already checked in!", "OK");
+                return;
+            }
+            
+            const membersList = teamData.participants.map(member => `<li>${member}</li>`).join('');
+            showPopup("Confirm Entry", `<b>Team:</b> ${teamData.teamName}<br><b>Leader:</b> ${teamData.teamLeader}<br><b>Members:</b> <ul>${membersList}</ul>`, "Confirm", async () => {
+                await updateDoc(teamRef, { checkedIn: true });
+                showPopup("Success", "Entry Confirmed ✅", "Done", () => location.reload());
+            });
+        }
+        
+        function showPopup(title, message, buttonText, callback = null) {
+            document.getElementById("popup-title").innerHTML = title;
+            document.getElementById("popup-message").innerHTML = message;
+            const button = document.getElementById("popup-button");
+            button.innerText = buttonText;
+            button.onclick = () => {
+                document.getElementById("popup").classList.add("hidden");
+                if (callback) callback();
+            };
+            document.getElementById("popup").classList.remove("hidden");
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen flex-col">
+    <h2 class="text-2xl font-bold mb-4">QR Scanner</h2>
+    <div id="scanner" class="w-full max-w-md bg-gray-800 p-4 rounded"></div>
+    <button onclick="scanQRCode()" class="mt-4 bg-blue-500 p-2 rounded">Start Scanning</button>
+    
+    <div id="popup" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+        <div class="bg-white text-black p-6 rounded shadow-md w-80 text-center">
+            <h3 id="popup-title" class="text-lg font-bold"></h3>
+            <p id="popup-message" class="mt-2"></p>
+            <button id="popup-button" class="mt-4 bg-blue-500 text-white p-2 rounded w-full"></button>
+        </div>
+    </div>
+</body>
+</html>
