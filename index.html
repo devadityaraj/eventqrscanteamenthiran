@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event QR System</title>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+    <title>QR Scanning - Event Entry</title>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyCRBIafHOkEkaggvjxwYI5TRTOZX6j8kOY",
@@ -21,127 +21,98 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
-        window.generateQR = async function() {
-            const teamName = document.getElementById('teamName').value;
-            const teamLeader = document.getElementById('teamLeader').value;
-            const participants = document.getElementById('participants').value.split(',');
+        function onScanSuccess(decodedText) {
+            fetchTeamData(decodedText);
+        }
+        
+        async function fetchTeamData(code) {
+            const teamDoc = await getDoc(doc(db, "teams", code));
             
-            if (!teamName || !teamLeader || participants.length === 0) {
-                alert('Please fill all fields');
+            if (!teamDoc.exists()) {
+                showPopup("Error", "Team not found!", "error");
                 return;
             }
             
-            const uniqueCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const qrData = `${uniqueCode}|${teamName}`;
+            const data = teamDoc.data();
+            if (data.checkedIn) {
+                showPopup("Warning", "Team already checked in!", "warning");
+                return;
+            }
             
-            await setDoc(doc(db, "teams", uniqueCode), {
-                teamName,
-                teamLeader,
-                participants,
-                checkedIn: false
-            });
-            
-            document.getElementById('qrcode-container').innerHTML = '';
-            
-            const qrContainer = document.createElement("div");
-            qrContainer.classList.add("qr-box");
-            
-            const title = document.createElement("p");
-            title.classList.add("qr-title");
-            title.innerText = `${teamName} - ${teamLeader}`;
-            
-            const qrCodeDiv = document.createElement("div");
-            new QRCode(qrCodeDiv, qrData);
-            
-            const codeText = document.createElement("p");
-            codeText.classList.add("qr-id");
-            codeText.innerText = `Team ID: ${uniqueCode}`;
-            
-            const downloadButton = document.createElement("button");
-            downloadButton.innerText = "Download QR";
-            downloadButton.classList.add("download-btn");
-            downloadButton.onclick = function() {
-                const canvas = document.createElement("canvas");
-                const ctx = canvas.getContext("2d");
-                const qrCanvas = qrCodeDiv.getElementsByTagName('canvas')[0];
-                
-                canvas.width = qrCanvas.width + 40;
-                canvas.height = qrCanvas.height + 80;
-                
-                ctx.fillStyle = "white";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                ctx.fillStyle = "black";
-                ctx.font = "16px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText(`${teamName} - ${teamLeader}`, canvas.width / 2, 20);
-                ctx.drawImage(qrCanvas, 20, 30);
-                ctx.fillText(`Team ID: ${uniqueCode}`, canvas.width / 2, qrCanvas.height + 60);
-                
-                const link = document.createElement("a");
-                link.href = canvas.toDataURL("image/png");
-                link.download = `${teamName}_QR.png`;
-                link.click();
-            };
-            
-            qrContainer.appendChild(title);
-            qrContainer.appendChild(qrCodeDiv);
-            qrContainer.appendChild(codeText);
-            qrContainer.appendChild(downloadButton);
-            
-            document.getElementById('qrcode-container').appendChild(qrContainer);
+            showPopup("Team Entry", `<b>Team Name:</b> ${data.teamName}<br><b>Leader:</b> ${data.teamLeader}<br><b>Participants:</b> ${data.participants.join(", ")}`, "info", true, () => confirmEntry(code));
         }
+        
+        async function confirmEntry(code) {
+            await updateDoc(doc(db, "teams", code), { checkedIn: true });
+            showPopup("Success", "Entry confirmed!", "success", false, startScanning);
+        }
+        
+        function showPopup(title, message, type, showConfirm = false, confirmAction = null) {
+            const popup = document.getElementById("popup");
+            popup.innerHTML = `<h3>${title}</h3><p>${message}</p>`;
+            popup.className = `popup ${type}`;
+            popup.style.display = "block";
+            
+            const buttonContainer = document.createElement("div");
+            buttonContainer.classList.add("popup-buttons");
+            
+            const closeButton = document.createElement("button");
+            closeButton.innerText = showConfirm ? "Confirm Entry" : "Done";
+            closeButton.onclick = () => {
+                popup.style.display = "none";
+                if (confirmAction) confirmAction();
+            };
+            buttonContainer.appendChild(closeButton);
+            popup.appendChild(buttonContainer);
+        }
+        
+        function startScanning() {
+            document.getElementById("scanner-container").style.display = "block";
+        }
+        
+        window.onload = function() {
+            const scanner = new Html5Qrcode("scanner");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
+        };
     </script>
     <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            background-color: #f4f4f4;
-            color: #333;
+            background-color: #121212;
+            color: #fff;
             padding: 20px;
         }
-        .container {
-            max-width: 400px;
+        .scanner-container {
             margin: auto;
-            background: white;
+            padding: 20px;
+            background: #1e1e1e;
+            border-radius: 10px;
+            box-shadow: 0px 4px 15px rgba(255, 255, 255, 0.1);
+        }
+        .popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #1e1e1e;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0px 4px 10px rgba(255, 255, 255, 0.2);
         }
-        input, textarea, button {
-            width: 100%;
+        .popup h3 { margin-top: 0; }
+        .popup.success { border-left: 5px solid #1db954; }
+        .popup.warning { border-left: 5px solid #ffcc00; }
+        .popup.error { border-left: 5px solid #ff4b5c; }
+        .popup-buttons button {
+            margin-top: 10px;
             padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-        }
-        button {
-            background-color: #007bff;
+            border: none;
+            background-color: #ff4b5c;
             color: white;
-            font-size: 16px;
             cursor: pointer;
-        }
-        .qr-box {
-            margin-top: 20px;
-            padding: 15px;
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        .qr-title {
-            font-size: 16px;
-            font-weight: bold;
-        }
-        .qr-id {
-            margin-top: 10px;
-            font-size: 14px;
-            color: #555;
-        }
-        .download-btn {
-            margin-top: 10px;
-            background-color: #28a745;
-            color: white;
+            border-radius: 5px;
         }
         .footer {
             margin-top: 20px;
@@ -155,14 +126,11 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Admin Panel</h2>
-        <input id="teamName" type="text" placeholder="Team Name" />
-        <input id="teamLeader" type="text" placeholder="Team Leader" />
-        <textarea id="participants" placeholder="Participants (comma-separated)"></textarea>
-        <button onclick="generateQR()">Generate QR</button>
-        <div id="qrcode-container"></div>
+    <div class="scanner-container" id="scanner-container">
+        <h2>Scan QR Code</h2>
+        <div id="scanner"></div>
     </div>
+    <div id="popup" class="popup"></div>
     <div class="footer">Made by Aditya Raj | © Team Enthiran</div>
 </body>
 </html>
