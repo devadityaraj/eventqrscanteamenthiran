@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Scanning - Event Entry</title>
-    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <title>Event QR System</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyCRBIafHOkEkaggvjxwYI5TRTOZX6j8kOY",
@@ -22,87 +22,104 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
-        function onScanSuccess(decodedText) {
-            fetchTeamData(decodedText);
-        }
-        
-        async function fetchTeamData(code) {
-            const teamDoc = await getDoc(doc(db, "teams", code));
+        window.generateQR = async function() {
+            const teamName = document.getElementById('teamName').value;
+            const teamLeader = document.getElementById('teamLeader').value;
+            const participants = document.getElementById('participants').value.split(',');
             
-            if (!teamDoc.exists()) {
-                showPopup("Error", "Team not found!", "bg-red-500");
+            if (!teamName || !teamLeader || participants.length === 0) {
+                alert('Please fill all fields');
                 return;
             }
             
-            const data = teamDoc.data();
-            if (data.checkedIn) {
-                showPopup("Warning", "Team already checked in!", "bg-yellow-500");
-                return;
-            }
+            const uniqueCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            const qrData = `${uniqueCode}|${teamName}`;
             
-            showPopup("Team Entry", `<b>Team Name:</b> ${data.teamName}<br><b>Leader:</b> ${data.teamLeader}<br><b>Participants:</b> ${data.participants.join(", ")}`, "bg-blue-500", true, () => confirmEntry(code));
-        }
-        
-        async function confirmEntry(code) {
-            await updateDoc(doc(db, "teams", code), { checkedIn: true });
-            showPopup("Success", "Entry confirmed!", "bg-green-500", false, startScanning);
-        }
-        
-        function showPopup(title, message, color, showConfirm = false, confirmAction = null) {
-            const popup = document.getElementById("popup");
-            popup.innerHTML = `<h3 class='text-lg font-bold'>${title}</h3><p>${message}</p>`;
-            popup.className = `popup p-4 rounded-md text-white ${color}`;
-            popup.style.display = "block";
+            await setDoc(doc(db, "teams", uniqueCode), {
+                teamName,
+                teamLeader,
+                participants,
+                checkedIn: false
+            });
             
-            const buttonContainer = document.createElement("div");
-            buttonContainer.classList.add("mt-3");
+            document.getElementById('qrcode-container').innerHTML = '';
             
-            const closeButton = document.createElement("button");
-            closeButton.innerText = showConfirm ? "Confirm Entry" : "Done";
-            closeButton.className = "px-4 py-2 bg-white text-black rounded-md mt-2";
-            closeButton.onclick = () => {
-                popup.style.display = "none";
-                if (confirmAction) confirmAction();
+            const qrContainer = document.createElement("div");
+            qrContainer.classList.add("flex", "flex-col", "items-center", "mt-4", "bg-white", "p-4", "rounded-lg");
+            
+            const title = document.createElement("p");
+            title.classList.add("text-black", "font-bold", "text-lg");
+            title.innerText = `${teamName} - ${teamLeader}`;
+            
+            const qrCodeDiv = document.createElement("div");
+            new QRCode(qrCodeDiv, qrData);
+            
+            const codeText = document.createElement("p");
+            codeText.classList.add("text-black", "mt-2");
+            codeText.innerText = `Team ID: ${uniqueCode}`;
+            
+            const downloadButton = document.createElement("button");
+            downloadButton.innerText = "Download QR";
+            downloadButton.classList.add("mt-2", "bg-blue-500", "text-white", "p-2", "rounded");
+            downloadButton.onclick = function() {
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                const qrCanvas = qrCodeDiv.getElementsByTagName('canvas')[0];
+                
+                canvas.width = qrCanvas.width + 40;
+                canvas.height = qrCanvas.height + 80;
+                
+                ctx.fillStyle = "white";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = "black";
+                ctx.font = "16px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(`${teamName} - ${teamLeader}`, canvas.width / 2, 20);
+                ctx.drawImage(qrCanvas, 20, 30);
+                ctx.fillText(`Team ID: ${uniqueCode}`, canvas.width / 2, qrCanvas.height + 60);
+                
+                const link = document.createElement("a");
+                link.href = canvas.toDataURL("image/png");
+                link.download = `${teamName}_QR.png`;
+                link.click();
             };
-            buttonContainer.appendChild(closeButton);
-            popup.appendChild(buttonContainer);
+            
+            qrContainer.appendChild(title);
+            qrContainer.appendChild(qrCodeDiv);
+            qrContainer.appendChild(codeText);
+            qrContainer.appendChild(downloadButton);
+            
+            document.getElementById('qrcode-container').appendChild(qrContainer);
         }
-        
-        function startScanning() {
-            document.getElementById("scanner-container").style.display = "block";
-        }
-        
-        window.onload = function() {
-            const scanner = new Html5Qrcode("scanner");
-            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
-        };
     </script>
     <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            background-color: #f3f4f6;
-            color: #333;
-            padding: 20px;
+            background-color: #121212;
+            color: white;
         }
-        .popup {
-            display: none;
+        .footer {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 20px;
+            bottom: 0;
+            width: 100%;
+            background: #1a1a1a;
+            color: white;
             text-align: center;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+            padding: 10px;
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center min-h-screen">
-    <div class="scanner-container bg-gray-800 p-6 rounded-lg shadow-lg mt-10">
-        <h2 class="text-xl font-bold">Scan QR Code</h2>
-        <div id="scanner" class="mt-4"></div>
+<body>
+    <div class="container mx-auto p-6">
+        <h2 class="text-2xl font-bold">Admin Panel</h2>
+        <input id="teamName" type="text" placeholder="Team Name" class="w-full p-2 mt-2 rounded" />
+        <input id="teamLeader" type="text" placeholder="Team Leader" class="w-full p-2 mt-2 rounded" />
+        <textarea id="participants" placeholder="Participants (comma-separated)" class="w-full p-2 mt-2 rounded"></textarea>
+        <button onclick="generateQR()" class="bg-blue-500 text-white p-2 rounded w-full mt-4">Generate QR</button>
+        <div id="qrcode-container" class="mt-4"></div>
     </div>
-    <div id="popup" class="popup w-80"></div>
-    <div class="mt-10 text-gray-400 text-sm">Made by Aditya Raj | © Team Enthiran</div>
+    <div class="footer">Made by Aditya Raj | © Team Enthiran</div>
 </body>
 </html>
